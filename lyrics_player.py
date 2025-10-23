@@ -1,247 +1,264 @@
+"""
+Karaoke-Style Lyrics Player with AI Transcription
+Optimized version with improved error handling, performance, and maintainability
+"""
+
 import os
-import re
+import sys
 import time
-import subprocess
+import logging
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
+from contextlib import contextmanager
+
 import pygame
 from yt_dlp import YoutubeDL
 import whisper
-import requests
-from fuzzywuzzy import process
-from bs4 import BeautifulSoup 
 
 # --- Configuration ---
-# CHANGED SONG to find a working video
-SONG_QUERY = "Imagine Dragons Believer lyric video" 
+@dataclass
+class Config:
+    """Configuration settings for the karaoke player"""
+    song_query: str = "Imagine Dragons Believer lyric video"
+    audio_filename: str = "temp_audio.mp3"
+    audio_file_base: str = "temp_audio"
+    whisper_model: str = "base.en"  # Options: tiny.en, base.en, small.en, medium.en
+    new_line_threshold: float = 0.8  # Seconds of silence before new line
+    audio_quality: str = "192"
+    timing_offset: float = 0.0  # Adjust if audio/lyrics are out of sync (seconds)
+    cleanup_on_exit: bool = True
 
-# !! FIXED THE FILENAME BUG HERE !!
-AUDIO_FILENAME = "temp_audio.mp3"  # The final filename we want
-AUDIO_FILE_BASE = "temp_audio"     # The base name we give to yt-dlp
-LYRICS_FILE = "temp_lyrics.txt" 
-# ---------------------
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def clear_console():
-    os.system('cls' if os.name == 'nt' else 'clear')
 
-# --- MANUAL LYRIC FUNCTION ---
-def get_lyrics_manually(query, token):
-    api_query = query.replace("lyric video", "").strip()
-    print(f"[1/5] 🕵️ Searching for lyrics for '{api_query}' on Genius...")
-    try:
-        SEARCH_URL = "https://api.genius.com/search"
-        headers = {'Authorization': f'Bearer {token}'}
-        params = {'q': api_query}
+class KaraokePlayer:
+    """Main karaoke player class with improved architecture"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.audio_path = Path(config.audio_filename)
+        self._model = None
         
-        response = requests.get(SEARCH_URL, headers=headers, params=params, timeout=10)
-        json_data = response.json()
-
-        if response.status_code != 200 or json_data.get('meta', {}).get('status') != 200:
-            print(f"❌ API Error: {json_data.get('meta', {}).get('message', 'Unknown error')}")
-            return None
+    @contextmanager
+    def _pygame_context(self):
+        """Context manager for pygame initialization/cleanup"""
+        pygame.init()
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+        try:
+            yield
+        finally:
+            pygame.mixer.quit()
+            pygame.quit()
+    
+    def _clear_console(self):
+        """Clear the console screen"""
+        os.system('cls' if os.name == 'nt' else 'clear')
+    
+    def cleanup_audio_file(self):
+        """Remove temporary audio file"""
+        if self.config.cleanup_on_exit and self.audio_path.exists():
+            try:
+                self.audio_path.unlink()
+                logger.info(f"🧹 Cleaned up {self.audio_path}")
+            except Exception as e:
+                logger.warning(f"Could not delete audio file: {e}")
+    
+    def download_audio(self) -> bool:
+        """
+        Downloads audio from YouTube with optimized settings.
+        Returns True if successful, False otherwise.
+        """
+        logger.info(f"[1/3] 📥 Downloading audio for '{self.config.song_query}'...")
         
-        hits = json_data.get('response', {}).get('hits', [])
-        if not hits:
-            print("❌ Lyrics not found on Genius.")
-            return None
+        # Clean up any existing file
+        if self.audio_path.exists():
+            self.audio_path.unlink()
+        
+        ydl_opts = {
+            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': self.config.audio_quality,
+            }],
+            'outtmpl': self.config.audio_file_base,
+            'default_search': 'ytsearch1',  # Only get first result
+            'quiet': True,
+            'noprogress': True,
+            'no_warnings': True,
+        }
+        
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(self.config.song_query, download=True)
+                if info:
+                    title = info.get('title', 'Unknown')
+                    duration = info.get('duration', 0)
+                    logger.info(f"📺 Video: {title} ({duration//60}:{duration%60:02d})")
             
-        song_path = hits[0]['result']['path']
-        full_title = hits[0]['result']['full_title']
-        print(f"✅ Found: {full_title}")
-        print(f"[1.5/5] 🕸️ Scraping lyrics from song page...")
-
-        page_url = f"https://genius.com{song_path}"
-        scraper_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        page_response = requests.get(page_url, headers=scraper_headers, timeout=10)
-        
-        if page_response.status_code != 200:
-            print(f"❌ Failed to scrape lyrics page (Status: {page_response.status_code})")
-            return None
-
-        soup = BeautifulSoup(page_response.text, 'html.parser')
-        lyric_containers = soup.find_all("div", attrs={"data-lyrics-container": "true"})
-        
-        if not lyric_containers:
-            print("❌ Could not find lyrics on page. Genius may have updated its layout.")
-            return None
-
-        lyrics = ""
-        for container in lyric_containers:
-            lyrics += container.get_text(separator="\n") + "\n"
-        
-        lyrics = os.linesep.join([s for s in lyrics.splitlines() if s.strip()])
-
-        with open(LYRICS_FILE, 'w', encoding='utf-8') as f:
-            f.write(lyrics)
-        
-        return lyrics.splitlines()
-
-    except requests.exceptions.Timeout:
-        print("❌ Connection to Genius.com timed out.")
-        return None
-    except Exception as e:
-        print(f"❌ Error scraping lyrics: {e}")
-        return None
-
-# --- YOUTUBE DOWNLOAD FUNCTION ---
-def download_youtube_audio(query):
-    print(f"[2/5] 📥 Downloading audio for '{query}'...")
-    
-    if os.path.exists(AUDIO_FILENAME):
-        os.remove(AUDIO_FILENAME)
-
-    ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        # !! FIXED: Use the base name, so postprocessor adds ".mp3" correctly
-        'outtmpl': AUDIO_FILE_BASE, 
-        'default_search': 'ytsearch',
-        'quiet': True,
-        'noprogress': True,
-    }
-
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([query])
-        
-        # !! FIXED: Check for the correct final filename
-        if not os.path.exists(AUDIO_FILENAME):
-             raise RuntimeError("Audio file was not created.")
-             
-        print(f"✅ Audio saved to {AUDIO_FILENAME}")
-        return True
-    except Exception as e:
-        print(f"❌ Error downloading audio: {e}")
-        return False
-
-# --- AI TRANSCRIPTION FUNCTION ---
-def transcribe_with_ai(audio_file):
-    print("[3/5] 🤖 Transcribing audio with AI (this may take a minute)...")
-    try:
-        model = whisper.load_model("tiny.en") 
-        result = model.transcribe(audio_file, verbose=False)
-        
-        ai_lines = []
-        for segment in result['segments']:
-            ai_lines.append((segment['start'], segment['text'].strip()))
-        
-        print(f"✅ AI transcription complete.")
-        return ai_lines
-    except Exception as e:
-        print(f"❌ Error during AI transcription: {e}")
-        if "No such file or directory: 'ffmpeg'" in str(e):
-            print("FATAL ERROR: ffmpeg is not installed or not in your PATH.")
-        return None
-
-# --- LYRIC ALIGNMENT FUNCTION ---
-def align_lyrics(clean_lyrics, ai_lyrics):
-    print("[4/5] 🧠 Aligning lyrics...")
-    
-    synced_lyrics = []
-    ai_text_list = [text for time, text in ai_lyrics]
-    
-    for clean_line in clean_lyrics:
-        if not clean_line.strip():
-            continue
+            if not self.audio_path.exists():
+                raise RuntimeError("Audio file was not created after download")
             
-        best_match, score = process.extractOne(clean_line, ai_text_list)
-        
-        if score > 70:
-            for ai_time, ai_text in ai_lyrics:
-                if ai_text == best_match:
-                    synced_lyrics.append((ai_time, clean_line))
-                    if (ai_time, ai_text) in ai_lyrics:
-                        ai_lyrics.remove((ai_time, ai_text))
-                    if ai_text in ai_text_list:
-                        ai_text_list.remove(ai_text)
-                    break
-        
-    synced_lyrics.sort()
+            logger.info(f"✅ Audio saved to {self.audio_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error downloading audio: {e}")
+            return False
     
-    if not synced_lyrics:
-        print("❌ Alignment failed. No matches found.")
-        return None
+    def transcribe_audio(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Transcribes audio using Whisper with word-level timestamps.
+        Returns list of word dictionaries or None on failure.
+        """
+        logger.info(f"[2/3] 🤖 Transcribing with Whisper {self.config.whisper_model}...")
         
-    print(f"✅ Alignment successful. {len(synced_lyrics)} lines synced.")
-    return synced_lyrics
-
-# --- PYGAME PLAYER FUNCTION ---
-def play_synced_song(audio_file, synced_lyrics):
-    print("\n[5/5] 🚀 Starting playback...")
-    time.sleep(2)
-    clear_console()
-
-    pygame.init()
-    pygame.mixer.init()
-
-    try:
-        pygame.mixer.music.load(audio_file)
-        pygame.mixer.music.play()
-    except pygame.error as e:
-        print(f"❌ Error playing audio: {e}")
-        pygame.quit()
-        return
-
-    current_lyric_index = 0
-    start_time = time.time()
+        if not self.audio_path.exists():
+            logger.error(f"❌ Audio file not found: {self.audio_path}")
+            return None
+        
+        try:
+            # Load model (cached after first load)
+            if self._model is None:
+                self._model = whisper.load_model(self.config.whisper_model)
+            
+            # Transcribe with word-level timestamps
+            result = self._model.transcribe(
+                str(self.audio_path),
+                verbose=False,
+                word_timestamps=True,
+                language="en"
+            )
+            
+            # Extract words from segments
+            words = []
+            for segment in result.get('segments', []):
+                segment_words = segment.get('words', [])
+                words.extend(segment_words)
+            
+            if not words:
+                logger.error("❌ No words found in transcription")
+                return None
+            
+            logger.info(f"✅ Transcription complete: {len(words)} words")
+            return words
+            
+        except FileNotFoundError as e:
+            if "ffmpeg" in str(e).lower():
+                logger.error("❌ FATAL: ffmpeg not found. Install it and add to PATH.")
+            else:
+                logger.error(f"❌ File error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Transcription error: {e}")
+            return None
     
-    try:
-        while pygame.mixer.music.get_busy() and current_lyric_index < len(synced_lyrics):
-            current_song_time_sec = pygame.mixer.music.get_pos() / 1000.0
-            next_lyric_time, next_lyric_text = synced_lyrics[current_lyric_index]
-
-            if current_song_time_sec >= next_lyric_time:
-                clear_console()
+    def play_karaoke(self, words: List[Dict[str, Any]]):
+        """
+        Plays audio with synchronized word-by-word lyrics display.
+        Uses improved timing algorithm for better sync.
+        """
+        logger.info("\n[3/3] 🎤 Starting karaoke mode...")
+        time.sleep(1.5)
+        self._clear_console()
+        
+        with self._pygame_context():
+            try:
+                pygame.mixer.music.load(str(self.audio_path))
+                pygame.mixer.music.play()
+            except pygame.error as e:
+                logger.error(f"❌ Error loading audio: {e}")
+                return
+            
+            start_time = time.time()
+            current_word_idx = 0
+            last_word_end = 0.0
+            
+            print("\n🎵 ", end='', flush=True)
+            
+            try:
+                while pygame.mixer.music.get_busy() and current_word_idx < len(words):
+                    # Calculate elapsed time (more accurate than get_pos())
+                    elapsed = time.time() - start_time + self.config.timing_offset
+                    
+                    word_info = words[current_word_idx]
+                    word_start = word_info.get('start', 0)
+                    word_text = word_info.get('word', '').strip()
+                    
+                    # Check if it's time to display this word
+                    if elapsed >= word_start:
+                        # Insert line break for long pauses
+                        if current_word_idx > 0:
+                            gap = word_start - last_word_end
+                            if gap > self.config.new_line_threshold:
+                                print("\n🎵 ", end='', flush=True)
+                        
+                        # Print word with highlighting
+                        print(f"\033[1;36m{word_text}\033[0m", end=' ', flush=True)
+                        
+                        last_word_end = word_info.get('end', word_start)
+                        current_word_idx += 1
+                    
+                    time.sleep(0.01)  # Small sleep to prevent CPU spinning
                 
-                if current_lyric_index > 1:
-                    print(f"  {synced_lyrics[current_lyric_index-2][1]}")
-                if current_lyric_index > 0:
-                    print(f"  {synced_lyrics[current_lyric_index-1][1]}")
-
-                print(f"\n🎤 ** {next_lyric_text} **\n")
+                # Wait for song to finish
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
                 
-                current_lyric_index += 1
+            except KeyboardInterrupt:
+                logger.info("\n\n⏸️  Stopped by user")
+                pygame.mixer.music.stop()
             
-            time.sleep(0.05)
+            print("\n\n✨ --- Song Finished --- ✨\n")
+    
+    def run(self):
+        """Main execution flow"""
+        try:
+            # Step 1: Download
+            if not self.download_audio():
+                return False
+            
+            # Step 2: Transcribe
+            words = self.transcribe_audio()
+            if not words:
+                return False
+            
+            # Step 3: Play
+            self.play_karaoke(words)
+            
+            return True
+            
+        finally:
+            self.cleanup_audio_file()
 
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.1)
 
+def main():
+    """Entry point with configuration"""
+    config = Config(
+        song_query="Imagine Dragons Believer lyric video",
+        whisper_model="base.en",  # Change to "small.en" for better accuracy
+        new_line_threshold=0.8,
+        timing_offset=0.0,  # Adjust if lyrics are ahead/behind audio
+    )
+    
+    player = KaraokePlayer(config)
+    
+    try:
+        success = player.run()
+        sys.exit(0 if success else 1)
     except KeyboardInterrupt:
-        print("\nStopping...")
-        pygame.mixer.music.stop()
-    
-    finally:
-        print("\n--- Song Finished ---")
-        pygame.quit()
-        # !! FIXED: Clean up the correct filename
-        if os.path.exists(AUDIO_FILENAME):
-            os.remove(AUDIO_FILENAME)
-        if os.path.exists(LYRICS_FILE):
-            os.remove(LYRICS_FILE)
+        logger.info("\n👋 Goodbye!")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"💥 Unexpected error: {e}")
+        sys.exit(1)
 
-# --- Main Execution ---
+
 if __name__ == "__main__":
-    
-    GENIUS_API_TOKEN = "2eQ4C0UIkhJe4M_BZpF2zbNU0I3NC8FjUgwVaM-qu8pvvfHyqGydFh3f75Ef6tae" 
-    
-    
-    clean_lyrics = get_lyrics_manually(SONG_QUERY, GENIUS_API_TOKEN)
-    if not clean_lyrics:
-        exit()
-    
-    # !! FIXED: Pass the correct filename to all functions
-    if not download_youtube_audio(SONG_QUERY):
-        exit()
-        
-    ai_lyrics = transcribe_with_ai(AUDIO_FILENAME)
-    if not ai_lyrics:
-        exit()
-        
-    synced_lyrics = align_lyrics(clean_lyrics, ai_lyrics)
-    if not synced_lyrics:
-        exit()
-
-    play_synced_song(AUDIO_FILENAME, synced_lyrics)
+    main()

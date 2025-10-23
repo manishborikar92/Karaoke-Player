@@ -1,0 +1,21 @@
+# Karaoke Player Requirements
+
+# Core dependencies
+yt-dlp>=2024.0.0          # YouTube download with improved performance
+openai-whisper>=20231117   # AI transcription with word timestamps
+pygame>=2.5.0              # Audio playback
+torch>=2.0.0               # Required by Whisper
+torchaudio>=2.0.0          # Audio processing for Whisper
+
+# Optional but recommended for better performance
+ffmpeg-python>=0.2.0       # Python bindings for ffmpeg (note: ffmpeg itself must be installed separately)
+
+# Development dependencies (optional)
+black>=23.0.0              # Code formatting
+mypy>=1.0.0                # Type checking
+pytest>=7.0.0              # Testing
+
+# Note: ffmpeg must be installed separately on your system
+# - macOS: brew install ffmpeg
+# - Ubuntu/Debian: sudo apt-get install ffmpeg
+# - Windows: Download from https://ffmpeg.org/download.html
