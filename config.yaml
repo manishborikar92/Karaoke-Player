@@ -1,0 +1,159 @@
+# Karaoke Player Pro 2.0 - Configuration File
+# This file is auto-generated on first run and can be customized
+
+# ===== Directory Paths =====
+temp_dir: temp
+cache_dir: cache
+playlist_dir: playlists
+
+# ===== Audio Settings =====
+audio:
+  # Audio quality for downloads (128, 192, 256, 320)
+  quality: "192"
+  
+  # Sample rate in Hz (22050, 44100, 48000)
+  sample_rate: 44100
+  
+  # Buffer size (smaller = lower latency, higher CPU)
+  buffer_size: 512
+  
+  # Number of audio channels (1=mono, 2=stereo)
+  channels: 2
+  
+  # Output format (mp3, wav, m4a, flac)
+  format: mp3
+
+# ===== Transcription Settings =====
+transcription:
+  # Whisper model: tiny.en, base.en, small.en, medium.en, large
+  # Larger models = better accuracy but slower and more memory
+  # Recommended: base.en for most users, small.en for better quality
+  model: base.en
+  
+  # Language code (en, es, fr, de, etc.)
+  language: en
+  
+  # Enable word-level timestamps (required for sync)
+  enable_word_timestamps: true
+  
+  # Beam size for transcription (higher = better quality, slower)
+  beam_size: 5
+  
+  # Temperature for sampling (0 = deterministic, higher = more random)
+  temperature: 0.0
+  
+  # Compression ratio threshold (lower = stricter)
+  compression_ratio_threshold: 2.4
+  
+  # No speech threshold (higher = more likely to detect speech)
+  no_speech_threshold: 0.6
+
+# ===== Display Settings =====
+display:
+  # Display mode: word, character
+  # word = word-by-word display
+  # character = character-by-character typewriter effect
+  mode: character
+  
+  # Visual theme: dark, light, neon, classic
+  theme: dark
+  
+  # Font size (12-48)
+  font_size: 24
+  
+  # Line spacing multiplier (1.0 = normal, 1.5 = wider)
+  line_spacing: 1.5
+  
+  # Seconds of silence before starting a new line
+  new_line_threshold: 0.8
+  
+  # Delay between characters in seconds (character mode only)
+  character_delay: 0.005
+  
+  # Delay between words in seconds (word mode only)
+  word_delay: 0.01
+  
+  # Show progress bar during playback
+  show_progress_bar: true
+  
+  # Show timestamps (for debugging)
+  show_timestamps: false
+  
+  # Start in fullscreen mode
+  fullscreen: false
+  
+  # Window dimensions (when not fullscreen)
+  window_width: 1024
+  window_height: 768
+
+# ===== Download Settings =====
+download:
+  # Default search method (ytsearch1 = first result)
+  default_search: ytsearch1
+  
+  # Prefer videos with "lyrics" in title
+  prefer_lyric_video: true
+  
+  # Maximum video duration in seconds (0 = no limit)
+  max_duration: 600
+  
+  # Skip advertisements
+  skip_ads: true
+  
+  # Extract audio only (recommended)
+  extract_audio_only: true
+
+# ===== General Settings =====
+# Automatically delete temporary files after use
+auto_cleanup: true
+
+# Timing offset in seconds (adjust if lyrics are ahead/behind)
+# Positive = delay lyrics, Negative = advance lyrics
+timing_offset: 0.0
+
+# Enable caching to speed up repeated downloads
+enable_cache: true
+
+# Save transcriptions for future use
+save_transcriptions: true
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: INFO
+
+# ===== GUI-Specific Settings =====
+# Remember window position between sessions
+remember_window_position: true
+
+# Enable smooth animations
+enable_animations: true
+
+# Show audio visualizer (future feature)
+show_visualizer: false
+
+# ===== CLI-Specific Settings =====
+# Use colored terminal output
+colored_output: true
+
+# Show ASCII banner on startup
+show_banner: true
+
+# ===== Advanced Settings =====
+# These settings are for advanced users only
+
+# Cache retention in days (0 = never delete)
+# cache_retention_days: 30
+
+# Maximum cache size in MB (0 = unlimited)
+# max_cache_size_mb: 1000
+
+# Enable debug mode (verbose logging)
+# debug_mode: false
+
+# Custom Whisper model path (for local models)
+# custom_model_path: null
+
+# GPU device ID for CUDA (-1 = CPU, 0+ = GPU)
+# gpu_device: -1
+
+# Number of CPU threads for transcription
+# num_threads: 4

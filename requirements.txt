@@ -1,21 +1,93 @@
-# Karaoke Player Requirements
+# Karaoke Player Pro 2.0 - Requirements
+# Python 3.8+
 
-# Core dependencies
-yt-dlp>=2024.0.0          # YouTube download with improved performance
-openai-whisper>=20231117   # AI transcription with word timestamps
-pygame>=2.5.0              # Audio playback
-torch>=2.0.0               # Required by Whisper
-torchaudio>=2.0.0          # Audio processing for Whisper
+# ===== Core Dependencies =====
+# YouTube download and processing
+yt-dlp>=2024.10.0
 
-# Optional but recommended for better performance
-ffmpeg-python>=0.2.0       # Python bindings for ffmpeg (note: ffmpeg itself must be installed separately)
+# AI transcription with word-level timestamps
+openai-whisper>=20231117
 
-# Development dependencies (optional)
-black>=23.0.0              # Code formatting
-mypy>=1.0.0                # Type checking
-pytest>=7.0.0              # Testing
+# Audio playback
+pygame>=2.5.0
 
-# Note: ffmpeg must be installed separately on your system
-# - macOS: brew install ffmpeg
-# - Ubuntu/Debian: sudo apt-get install ffmpeg
-# - Windows: Download from https://ffmpeg.org/download.html
+# Deep learning framework (required by Whisper)
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Configuration file parsing
+PyYAML>=6.0
+
+# ===== Optional Dependencies =====
+# Better FFmpeg integration (optional but recommended)
+ffmpeg-python>=0.2.0
+
+# Faster audio processing (optional, improves transcription speed)
+numba>=0.57.0
+
+# ===== Development Dependencies =====
+# Code formatting
+black>=23.0.0
+isort>=5.12.0
+
+# Linting
+flake8>=6.0.0
+pylint>=3.0.0
+
+# Type checking
+mypy>=1.0.0
+types-PyYAML>=6.0.0
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Documentation
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.2.0
+
+# ===== Platform-Specific Notes =====
+# 
+# IMPORTANT: ffmpeg must be installed separately on your system:
+#
+# macOS:
+#   brew install ffmpeg
+#
+# Ubuntu/Debian:
+#   sudo apt-get update
+#   sudo apt-get install ffmpeg
+#
+# Windows:
+#   1. Download from https://ffmpeg.org/download.html
+#   2. Extract to C:\ffmpeg
+#   3. Add C:\ffmpeg\bin to PATH
+#
+# Verify installation:
+#   ffmpeg -version
+
+# ===== GPU Acceleration (Optional) =====
+#
+# For NVIDIA GPU acceleration (5-10x faster transcription):
+# 
+# 1. Install CUDA Toolkit from https://developer.nvidia.com/cuda-downloads
+# 2. Replace torch with GPU version:
+#    pip uninstall torch torchaudio
+#    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# Verify GPU support:
+#   python -c "import torch; print(torch.cuda.is_available())"
+
+# ===== Installation Commands =====
+#
+# Basic installation:
+#   pip install -r requirements.txt
+#
+# Development installation:
+#   pip install -r requirements.txt
+#   pip install -e .
+#
+# With GPU support:
+#   pip install -r requirements.txt
+#   pip uninstall torch torchaudio
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
