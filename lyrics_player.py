@@ -1,6 +1,6 @@
 """
 Karaoke-Style Lyrics Player with AI Transcription
-Optimized version with improved error handling, performance, and maintainability
+Character-by-character display for dramatic typewriter effect
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 import time
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 from contextlib import contextmanager
 
@@ -28,6 +28,7 @@ class Config:
     audio_quality: str = "192"
     timing_offset: float = 0.0  # Adjust if audio/lyrics are out of sync (seconds)
     cleanup_on_exit: bool = True
+    character_mode: bool = True  # Display character-by-character
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class KaraokePlayer:
-    """Main karaoke player class with improved architecture"""
+    """Main karaoke player class with character-by-character display"""
     
     def __init__(self, config: Config):
         self.config = config
@@ -159,13 +160,56 @@ class KaraokePlayer:
             logger.error(f"❌ Transcription error: {e}")
             return None
     
+    def _generate_character_timings(self, words: List[Dict[str, Any]]) -> List[Tuple[str, float, bool]]:
+        """
+        Generates character-level timings from word-level timestamps.
+        Returns list of (character, timestamp, is_newline) tuples.
+        """
+        char_timings = []
+        last_word_end = 0.0
+        
+        for word_idx, word_info in enumerate(words):
+            word_start = word_info.get('start', 0)
+            word_end = word_info.get('end', word_start + 0.3)
+            word_text = word_info.get('word', '').strip()
+            
+            # Check for line break before this word
+            if word_idx > 0:
+                gap = word_start - last_word_end
+                if gap > self.config.new_line_threshold:
+                    char_timings.append(('\n', word_start - 0.05, True))
+            
+            # Calculate character timing
+            if len(word_text) > 0:
+                word_duration = word_end - word_start
+                char_duration = word_duration / len(word_text)
+                
+                for char_idx, char in enumerate(word_text):
+                    char_time = word_start + (char_idx * char_duration)
+                    char_timings.append((char, char_time, False))
+                
+                # Add space after word (unless it's the last word)
+                if word_idx < len(words) - 1:
+                    space_time = word_end
+                    char_timings.append((' ', space_time, False))
+            
+            last_word_end = word_end
+        
+        return char_timings
+    
     def play_karaoke(self, words: List[Dict[str, Any]]):
         """
-        Plays audio with synchronized word-by-word lyrics display.
-        Uses improved timing algorithm for better sync.
+        Plays audio with synchronized character-by-character lyrics display.
+        Creates a dramatic typewriter effect.
         """
-        logger.info("\n[3/3] 🎤 Starting karaoke mode...")
+        logger.info("\n[3/3] 🎤 Starting karaoke mode (character-by-character)...")
         time.sleep(1.5)
+        self._clear_console()
+        
+        # Generate character timings
+        char_timings = self._generate_character_timings(words)
+        logger.info(f"✨ Generated {len(char_timings)} character timings")
+        time.sleep(0.5)
         self._clear_console()
         
         with self._pygame_context():
@@ -177,35 +221,28 @@ class KaraokePlayer:
                 return
             
             start_time = time.time()
-            current_word_idx = 0
-            last_word_end = 0.0
+            current_char_idx = 0
             
             print("\n🎵 ", end='', flush=True)
             
             try:
-                while pygame.mixer.music.get_busy() and current_word_idx < len(words):
-                    # Calculate elapsed time (more accurate than get_pos())
+                while pygame.mixer.music.get_busy() and current_char_idx < len(char_timings):
+                    # Calculate elapsed time
                     elapsed = time.time() - start_time + self.config.timing_offset
                     
-                    word_info = words[current_word_idx]
-                    word_start = word_info.get('start', 0)
-                    word_text = word_info.get('word', '').strip()
+                    char, char_time, is_newline = char_timings[current_char_idx]
                     
-                    # Check if it's time to display this word
-                    if elapsed >= word_start:
-                        # Insert line break for long pauses
-                        if current_word_idx > 0:
-                            gap = word_start - last_word_end
-                            if gap > self.config.new_line_threshold:
-                                print("\n🎵 ", end='', flush=True)
+                    # Check if it's time to display this character
+                    if elapsed >= char_time:
+                        if is_newline:
+                            print("\n🎵 ", end='', flush=True)
+                        else:
+                            # Print character with color
+                            print(f"\033[1;36m{char}\033[0m", end='', flush=True)
                         
-                        # Print word with highlighting
-                        print(f"\033[1;36m{word_text}\033[0m", end=' ', flush=True)
-                        
-                        last_word_end = word_info.get('end', word_start)
-                        current_word_idx += 1
+                        current_char_idx += 1
                     
-                    time.sleep(0.01)  # Small sleep to prevent CPU spinning
+                    time.sleep(0.005)  # Smaller sleep for smoother character display
                 
                 # Wait for song to finish
                 while pygame.mixer.music.get_busy():
@@ -245,6 +282,7 @@ def main():
         whisper_model="base.en",  # Change to "small.en" for better accuracy
         new_line_threshold=0.8,
         timing_offset=0.0,  # Adjust if lyrics are ahead/behind audio
+        character_mode=True,  # Character-by-character display
     )
     
     player = KaraokePlayer(config)
