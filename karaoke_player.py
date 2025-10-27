@@ -17,18 +17,44 @@ from yt_dlp import YoutubeDL
 import whisper
 
 # --- Configuration ---
+# Available Whisper Models
+WHISPER_MODELS = [
+    'tiny.en',      # English-only, fastest, ~1GB RAM
+    'tiny',         # Multilingual, fastest, ~1GB RAM
+    'base.en',      # English-only, fast, ~1GB RAM
+    'base',         # Multilingual, fast, ~1GB RAM
+    'small.en',     # English-only, balanced, ~2GB RAM
+    'small',        # Multilingual, balanced, ~2GB RAM
+    'medium.en',    # English-only, accurate, ~5GB RAM
+    'medium',       # Multilingual, accurate, ~5GB RAM
+    'large-v1',     # Multilingual, very accurate, ~10GB RAM
+    'large-v2',     # Multilingual, very accurate, ~10GB RAM
+    'large-v3',     # Multilingual, most accurate, ~10GB RAM
+    'large',        # Alias for latest large model, ~10GB RAM
+    'large-v3-turbo', # Multilingual, fast large model, ~6GB RAM
+    'turbo',        # Alias for large-v3-turbo, ~6GB RAM
+]
+
 @dataclass
 class Config:
     """Configuration settings for the karaoke player"""
     song_query: str = "Imagine Dragons Believer lyric video"
     audio_filename: str = "temp_audio.mp3"
     audio_file_base: str = "temp_audio"
-    whisper_model: str = "base.en"  # Options: tiny.en, base.en, small.en, medium.en
+    whisper_model: str = "base.en"  # Choose from WHISPER_MODELS list
     new_line_threshold: float = 0.8  # Seconds of silence before new line
     audio_quality: str = "192"
     timing_offset: float = 0.0  # Adjust if audio/lyrics are out of sync (seconds)
     cleanup_on_exit: bool = True
     character_mode: bool = True  # Display character-by-character
+
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if self.whisper_model not in WHISPER_MODELS:
+            logger.warning(
+                f"⚠️  Model '{self.whisper_model}' not in standard list. "
+                f"Available models: {', '.join(WHISPER_MODELS)}"
+            )
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -118,7 +144,7 @@ class KaraokePlayer:
         Transcribes audio using Whisper with word-level timestamps.
         Returns list of word dictionaries or None on failure.
         """
-        logger.info(f"[2/3] 🤖 Transcribing with Whisper {self.config.whisper_model}...")
+        logger.info(f"[2/3] 🤖 Transcribing with Whisper '{self.config.whisper_model}'...")
         
         if not self.audio_path.exists():
             logger.error(f"❌ Audio file not found: {self.audio_path}")
@@ -127,7 +153,9 @@ class KaraokePlayer:
         try:
             # Load model (cached after first load)
             if self._model is None:
+                logger.info(f"📦 Loading model '{self.config.whisper_model}'...")
                 self._model = whisper.load_model(self.config.whisper_model)
+                logger.info("✅ Model loaded successfully")
             
             # Transcribe with word-level timestamps
             result = self._model.transcribe(
@@ -155,6 +183,13 @@ class KaraokePlayer:
                 logger.error("❌ FATAL: ffmpeg not found. Install it and add to PATH.")
             else:
                 logger.error(f"❌ File error: {e}")
+            return None
+        except RuntimeError as e:
+            if "model" in str(e).lower():
+                logger.error(f"❌ Model '{self.config.whisper_model}' not available.")
+                logger.error(f"   Available models: {', '.join(WHISPER_MODELS[:8])}")
+            else:
+                logger.error(f"❌ Runtime error: {e}")
             return None
         except Exception as e:
             logger.error(f"❌ Transcription error: {e}")
@@ -279,7 +314,7 @@ def main():
     """Entry point with configuration"""
     config = Config(
         song_query="Imagine Dragons Believer lyric video",
-        whisper_model="base.en",  # Change to "small.en" for better accuracy
+        whisper_model="base.en",  # See WHISPER_MODELS for all options
         new_line_threshold=0.8,
         timing_offset=0.0,  # Adjust if lyrics are ahead/behind audio
         character_mode=True,  # Character-by-character display
