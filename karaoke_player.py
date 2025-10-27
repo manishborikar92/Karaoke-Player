@@ -50,7 +50,8 @@ class Config:
     audio_file_base: str = "temp_audio"
     whisper_model: str = DEFAULT_MODEL
     display_mode: DisplayMode = DisplayMode.CHARACTER
-    new_line_threshold: float = 0.8
+    new_line_threshold: float = 0.5  # Lower = more line breaks
+    max_line_length: int = 50  # Maximum characters per line
     audio_quality: str = "192"
     timing_offset: float = 0.0
     cleanup_on_exit: bool = True
@@ -305,18 +306,35 @@ class KaraokePlayer:
     # ------------------------------------------------------------------------
     
     def _generate_character_timings(self, words: List[Dict[str, Any]]) -> List[Tuple[str, float, bool]]:
-        """Generate character-level timings from word timestamps"""
+        """Generate character-level timings from word timestamps with smart line breaks"""
         char_timings = []
         last_word_end = 0.0
+        current_line_length = 0
         
         for word_idx, word_info in enumerate(words):
             word_start = word_info.get('start', 0)
             word_end = word_info.get('end', word_start + 0.3)
             word_text = word_info.get('word', '').strip()
             
-            # Check for line break
-            if word_idx > 0 and (word_start - last_word_end) > self.config.new_line_threshold:
+            # Calculate gap from last word
+            gap = word_start - last_word_end if word_idx > 0 else 0
+            
+            # Smart line break detection
+            should_break = False
+            if word_idx > 0:
+                # Break on significant pauses
+                if gap > self.config.new_line_threshold:
+                    should_break = True
+                # Break on shorter pauses if line is getting long
+                elif gap > 0.3 and current_line_length > self.config.max_line_length * 0.7:
+                    should_break = True
+                # Force break if line is too long
+                elif current_line_length > self.config.max_line_length:
+                    should_break = True
+            
+            if should_break:
                 char_timings.append(('\n', word_start - 0.05, True))
+                current_line_length = 0
             
             # Calculate character timing
             if len(word_text) > 0:
@@ -326,61 +344,98 @@ class KaraokePlayer:
                 for char_idx, char in enumerate(word_text):
                     char_time = word_start + (char_idx * char_duration)
                     char_timings.append((char, char_time, False))
+                    current_line_length += 1
                 
                 # Add space after word
                 if word_idx < len(words) - 1:
                     char_timings.append((' ', word_end, False))
+                    current_line_length += 1
             
             last_word_end = word_end
         
         return char_timings
     
     def _generate_word_timings(self, words: List[Dict[str, Any]]) -> List[Tuple[str, float, bool]]:
-        """Generate word-level timings"""
+        """Generate word-level timings with smart line breaks"""
         word_timings = []
         last_word_end = 0.0
+        current_line_length = 0
         
         for word_idx, word_info in enumerate(words):
             word_start = word_info.get('start', 0)
             word_end = word_info.get('end', word_start + 0.3)
             word_text = word_info.get('word', '').strip()
             
-            # Check for line break
-            if word_idx > 0 and (word_start - last_word_end) > self.config.new_line_threshold:
+            # Calculate gap from last word
+            gap = word_start - last_word_end if word_idx > 0 else 0
+            
+            # Smart line break detection
+            should_break = False
+            if word_idx > 0:
+                # Break on significant pauses
+                if gap > self.config.new_line_threshold:
+                    should_break = True
+                # Break on shorter pauses if line is getting long
+                elif gap > 0.3 and current_line_length > self.config.max_line_length * 0.7:
+                    should_break = True
+                # Force break if line is too long
+                elif current_line_length + len(word_text) > self.config.max_line_length:
+                    should_break = True
+            
+            if should_break:
                 word_timings.append(('\n', word_start - 0.05, True))
+                current_line_length = 0
             
             if word_text:
                 word_timings.append((word_text + ' ', word_start, False))
+                current_line_length += len(word_text) + 1
             
             last_word_end = word_end
         
         return word_timings
     
     def _generate_line_timings(self, words: List[Dict[str, Any]]) -> List[Tuple[str, float, bool]]:
-        """Generate line-level timings"""
+        """Generate line-level timings with smart line breaks"""
         line_timings = []
         current_line = []
         line_start = 0.0
         last_word_end = 0.0
+        current_line_length = 0
         
         for word_idx, word_info in enumerate(words):
             word_start = word_info.get('start', 0)
             word_end = word_info.get('end', word_start + 0.3)
             word_text = word_info.get('word', '').strip()
             
-            # Check for line break
-            if word_idx > 0 and (word_start - last_word_end) > self.config.new_line_threshold:
-                if current_line:
-                    line_text = ' '.join(current_line)
-                    line_timings.append((line_text, line_start, False))
-                    line_timings.append(('\n', word_start - 0.05, True))
-                    current_line = []
+            # Calculate gap from last word
+            gap = word_start - last_word_end if word_idx > 0 else 0
+            
+            # Smart line break detection
+            should_break = False
+            if word_idx > 0:
+                # Break on significant pauses
+                if gap > self.config.new_line_threshold:
+                    should_break = True
+                # Break on shorter pauses if line is getting long
+                elif gap > 0.3 and current_line_length > self.config.max_line_length * 0.7:
+                    should_break = True
+                # Force break if line is too long
+                elif current_line_length + len(word_text) > self.config.max_line_length:
+                    should_break = True
+            
+            if should_break and current_line:
+                line_text = ' '.join(current_line)
+                line_timings.append((line_text, line_start, False))
+                line_timings.append(('\n', word_start - 0.05, True))
+                current_line = []
+                current_line_length = 0
             
             if not current_line:
                 line_start = word_start
             
             if word_text:
                 current_line.append(word_text)
+                current_line_length += len(word_text) + 1
             
             last_word_end = word_end
         
@@ -489,6 +544,7 @@ def interactive_setup() -> Config:
     )
     
     # Display mode
+    print()
     modes = ["Character-by-character (Typewriter effect)", "Word-by-word", "Line-by-line"]
     mode_idx = UI.get_choice("Select display mode:", modes, default=0)
     mode_map = [DisplayMode.CHARACTER, DisplayMode.WORD, DisplayMode.LINE]
@@ -499,18 +555,40 @@ def interactive_setup() -> Config:
     
     whisper_model = DEFAULT_MODEL
     timing_offset = 0.0
+    line_break_sensitivity = 0.5  # Default
+    max_line_length = 50  # Default
     
     if show_advanced:
         # Model selection
-        model_options = [
-            f"{DEFAULT_MODEL} (Recommended: Fast + Accurate)",
-            "small.en (Faster, Good accuracy)",
-            "medium.en (Slower, Best English)",
-            "large-v3 (Slowest, Best multilingual)"
-        ]
-        model_map = [DEFAULT_MODEL, "small.en", "medium.en", "large-v3"]
-        model_idx = UI.get_choice("Select Whisper model:", model_options, default=0)
-        whisper_model = model_map[model_idx]
+        print()
+        UI.print_info(f"Available models: {', '.join(WHISPER_MODELS)}")
+        custom_model = UI.get_input(
+            f"Whisper model (default: {DEFAULT_MODEL})",
+            DEFAULT_MODEL
+        )
+        if custom_model in WHISPER_MODELS:
+            whisper_model = custom_model
+        
+        # Line break sensitivity
+        print()
+        UI.print_info("Line Break Settings:")
+        sensitivity_input = UI.get_input(
+            "Line break sensitivity in seconds (0.3=more breaks, 0.8=fewer breaks)",
+            "0.5"
+        )
+        try:
+            line_break_sensitivity = float(sensitivity_input)
+        except ValueError:
+            line_break_sensitivity = 0.5
+        
+        max_length_input = UI.get_input(
+            "Max characters per line (30-80 recommended)",
+            "50"
+        )
+        try:
+            max_line_length = int(max_length_input)
+        except ValueError:
+            max_line_length = 50
         
         # Timing offset
         timing_input = UI.get_input("Timing offset in seconds (0.0 for none)", "0.0")
@@ -523,6 +601,8 @@ def interactive_setup() -> Config:
         song_query=song_query,
         whisper_model=whisper_model,
         display_mode=mode_map[mode_idx],
+        new_line_threshold=line_break_sensitivity,
+        max_line_length=max_line_length,
         timing_offset=timing_offset
     )
     
