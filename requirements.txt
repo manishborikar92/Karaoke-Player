@@ -1,7 +1,7 @@
 # Karaoke Player Requirements
 
 # Core dependencies
-yt-dlp>=2024.0.0          # YouTube download with improved performance
+yt-dlp>=2024.12.23        # YouTube download with improved performance and 403 fix
 openai-whisper>=20231117   # AI transcription with word timestamps
 pygame>=2.5.0              # Audio playback
 torch>=2.0.0               # Required by Whisper
