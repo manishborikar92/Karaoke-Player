@@ -218,7 +218,7 @@ class KaraokePlayer:
             self.audio_path.unlink()
         
         ydl_opts = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'ba/b',  # ba = best audio, b = best (fallback)
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -229,6 +229,9 @@ class KaraokePlayer:
             'quiet': True,
             'noprogress': True,
             'no_warnings': True,
+            # Fix for HTTP 403 errors
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {'youtube': {'player_client': ['android_vr']}},
         }
         
         try:
